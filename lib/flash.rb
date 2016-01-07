@@ -1,23 +1,23 @@
-class HashWithIndifferentAccess
-  def initialize(hash={})
-    @hash = {}
-    hash.each do |k,v|
-      @hash[k.to_s] = v
-    end
-  end
-
-  def [](key)
-    @hash[key.to_s]
-  end
-
-  def []=(key, val)
-    @hash[key.to_s] = val
-  end
-
-  def to_json
-    @hash.to_json
-  end
-end
+# class HashWithIndifferentAccess
+#   def initialize(hash = {})
+#     @hash = {}
+#     hash.each do |k,v|
+#       @hash[k.to_s] = v
+#     end
+#   end
+#
+#   def [](key)
+#     @hash[key.to_s]
+#   end
+#
+#   def []=(key, val)
+#     @hash[key.to_s] = val
+#   end
+#
+#   def to_json
+#     @hash.to_json
+#   end
+# end
 
 class Flash
 
@@ -27,11 +27,14 @@ class Flash
     @req = req
     flash = req.cookies['_rails_lite_app_flash']
     if flash.nil?
-      @now = HashWithIndifferentAccess.new
+    #   @now = HashWithIndifferentAccess.new
+      @now = {}
     else
-      @now = HashWithIndifferentAccess.new(JSON.parse(flash))
+    #   @now = HashWithIndifferentAccess.new(JSON.parse(flash))
+      @now = JSON.parse(flash)
     end
-    @later = HashWithIndifferentAccess.new
+    # @later = HashWithIndifferentAccess.new
+    @later = {}
   end
 
   def [](key)

@@ -6,6 +6,8 @@ require_relative './flash'
 require 'byebug'
 
 class ControllerBase
+  @@forgery_protection = {}
+
   attr_reader :req, :res, :params
 
   def initialize(req, res, route_params = {})
@@ -64,12 +66,22 @@ class ControllerBase
     token
   end
 
-  def invoke_action(name)
-    if [:create, :update, :destroy].include?(name)
-      unless flash["csrf_tokens"].include? (req.params["authenticity_token"])
-        raise "Invalid authenticity token."
+  def self.protect_from_forgery(options)
+    @@forgery_protection = options
+  end
+
+  def check_csrf(name)
+    if @@forgery_protection[:with] == :exception
+      if [:create, :update, :destroy].include?(name)
+        unless flash["csrf_tokens"] && flash["csrf_tokens"].include?(req.params["authenticity_token"])
+          raise "Invalid authenticity token."
+        end
       end
     end
+  end
+
+  def invoke_action(name)
+    check_csrf(name)
     send(name)
     render(name) unless already_built_response?
   end

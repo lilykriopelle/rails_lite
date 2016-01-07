@@ -28,6 +28,8 @@ class Cat
 end
 
 class Cats2Controller < ControllerBase
+  protect_from_forgery with: :exception
+
   def index
     flash["random"] = "NOW AND LATER"
     flash.now["stuff"] = "now"
