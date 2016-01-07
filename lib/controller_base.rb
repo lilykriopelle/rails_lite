@@ -5,6 +5,27 @@ require_relative './session'
 require_relative './flash'
 require 'byebug'
 
+class HashWithIndifferentAccess
+  def initialize(hash = {})
+    @hash = {}
+    hash.each do |k,v|
+      @hash[k.to_s] = v
+    end
+  end
+
+  def [](key)
+    @hash[key.to_s]
+  end
+
+  def []=(key, val)
+    @hash[key.to_s] = val
+  end
+
+  def to_json
+    @hash.to_json
+  end
+end
+
 class ControllerBase
   @@forgery_protection = {}
 
@@ -13,7 +34,7 @@ class ControllerBase
   def initialize(req, res, route_params = {})
     @req = req
     @res = res
-    @params = route_params.merge(req.params)
+    @params = HashWithIndifferentAccess.new(route_params.merge(req.params))
   end
 
   def already_built_response?

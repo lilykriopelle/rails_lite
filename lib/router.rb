@@ -48,10 +48,22 @@ class Router
     instance_eval(&proc)
   end
 
-  [:get, :post, :put, :delete].each do |http_method|
+  [:get, :post, :put, :patch, :delete].each do |http_method|
     define_method(http_method) do |pattern, controller_class, action_name|
       add_route(pattern, http_method, controller_class, action_name)
     end
+  end
+
+  def resources(resource)
+    controller = "#{resource.to_s.capitalize}Controller".constantize
+    get Regexp.new("^/#{resource}$"), controller, :index
+    get Regexp.new("^/#{resource}/new$"), controller, :new
+    post Regexp.new("^/#{resource}$"), controller, :create
+    get Regexp.new("^/#{resource}/(?<cat_id>\\d+)$"), controller, :show
+    get Regexp.new("^/#{resource}/(?<cat_id>\\d+)/edit$"), controller, :edit
+    put Regexp.new("^/#{resource}/(?<cat_id>\\d+)$"), controller, :update
+    patch Regexp.new("^/#{resource}/(?<cat_id>\\d+)$"), controller, :update
+    delete Regexp.new("^/#{resource}/(?<cat_id>\\d+)$"), controller, :destroy
   end
 
   def match(req)
