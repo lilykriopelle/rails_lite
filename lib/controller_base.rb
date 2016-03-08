@@ -28,8 +28,41 @@ end
 
 class ControllerBase
   @@forgery_protection = {}
+  @@before_actions = Hash.new { |h,k| h[k] = [] }
+  @@before_actions_excepts = Hash.new { |h,k| h[k] = [] }
 
   attr_reader :req, :res, :params
+
+  def self.protect_from_forgery(options)
+    @@forgery_protection = options
+  end
+
+  def self.before_action(method, options)
+    if options == {}
+      @@before_actions[:_every] << method
+    else
+      if options[:only]
+        if options[:only].is_a? Array
+          options[:only].each do |action|
+            @@before_actions[action] << method
+          end
+        else
+          @@before_actions[options[:only]] << method
+        end
+      end
+
+      if options[:except]
+        @@before_actions[:_every] << method
+        if options[:except].is_a? Array
+          options[:except].each do |action|
+            @@before_actions_excepts[action] << method
+          end
+        else
+          @@before_actions_excepts[options[:except]] << method
+        end
+      end
+    end
+  end
 
   def initialize(req, res, route_params = {})
     @req = req
@@ -42,19 +75,9 @@ class ControllerBase
   end
 
   def redirect_to(url)
-    raise "Double render/redirect" if already_built_response?
+    check_for_double_render
     res["Location"] = url
     res.status = 302
-    @already_built_response = true
-    session.store_session(res)
-    flash.store_flash(res)
-  end
-
-  def render_content(content, content_type)
-    raise "Double render/redirect" if already_built_response?
-    res["Content-Type"] = content_type
-    res.write(content)
-    @already_built_response = true
     session.store_session(res)
     flash.store_flash(res)
   end
@@ -71,7 +94,14 @@ class ControllerBase
     render_content(template.result(binding), "text/html")
   end
 
-  # method exposing a `Session` object
+  def render_content(content, content_type)
+    check_for_double_render
+    res["Content-Type"] = content_type
+    res.write(content)
+    session.store_session(res)
+    flash.store_flash(res)
+  end
+
   def session
     @session ||= Session.new(req)
   end
@@ -87,23 +117,41 @@ class ControllerBase
     token
   end
 
-  def self.protect_from_forgery(options)
-    @@forgery_protection = options
+  def invoke_action(name)
+    check_csrf(name)
+    run_before_actions(name)
+    send(name)
+    render(name) unless already_built_response?
   end
 
-  def check_csrf(name)
-    if @@forgery_protection[:with] == :exception
-      if [:create, :update, :destroy].include?(name)
-        unless flash["csrf_tokens"] && flash["csrf_tokens"].include?(req.params["authenticity_token"])
+  private
+    def check_for_double_render
+      raise "Double render/redirect" if already_built_response?
+      @already_built_response = true
+    end
+
+    def run_before_actions(name)
+      run_before_actions_for(name)
+      run_before_actions_for(:_every, name)
+    end
+
+    def check_csrf(name)
+      if @@forgery_protection[:with] == :exception
+        if [:create, :update, :destroy].include?(name) && !valid_csrf_token_present?
           raise "Invalid authenticity token."
         end
       end
     end
-  end
 
-  def invoke_action(name)
-    check_csrf(name)
-    send(name)
-    render(name) unless already_built_response?
-  end
+    def run_before_actions_for(actions_for, excepts_for = actions_for)
+      @@before_actions[actions_for].each do |method|
+        unless @@before_actions_excepts[excepts_for].include?(method)
+          send(method)
+        end
+      end
+    end
+
+    def valid_csrf_token_present?
+      flash["csrf_tokens"] && flash["csrf_tokens"].include?(req.params["authenticity_token"])
+    end
 end
