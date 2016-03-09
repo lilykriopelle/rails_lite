@@ -1,7 +1,6 @@
 require 'rack'
 require_relative '../lib/controller_base'
 require_relative '../lib/router'
-require 'byebug'
 
 class CatsController < ControllerBase
   before_action :before, except: [:index, :new]

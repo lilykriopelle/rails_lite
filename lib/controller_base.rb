@@ -3,75 +3,23 @@ require 'active_support/core_ext'
 require 'erb'
 require_relative './session'
 require_relative './flash'
+require_relative './hash_with_indifferent_access'
+require_relative './concerns/forgery_protection'
+require_relative './concerns/before_actions'
+require_relative './errors/double_render_error'
+
 require 'byebug'
 
-class HashWithIndifferentAccess
-  def initialize(hash = {})
-    @hash = {}
-    hash.each do |k,v|
-      @hash[k.to_s] = v
-    end
-  end
-
-  def [](key)
-    @hash[key.to_s]
-  end
-
-  def []=(key, val)
-    @hash[key.to_s] = val
-  end
-
-  def to_json
-    @hash.to_json
-  end
-end
-
 class ControllerBase
-  @@forgery_protection = {}
-  @@before_actions = Hash.new { |h,k| h[k] = [] }
-  @@before_actions_excepts = Hash.new { |h,k| h[k] = [] }
+  include BeforeActions
+  include ForgeryProtection
 
   attr_reader :req, :res, :params
-
-  def self.protect_from_forgery(options)
-    @@forgery_protection = options
-  end
-
-  def self.before_action(method, options)
-    if options == {}
-      @@before_actions[:_every] << method
-    else
-      if options[:only]
-        if options[:only].is_a? Array
-          options[:only].each do |action|
-            @@before_actions[action] << method
-          end
-        else
-          @@before_actions[options[:only]] << method
-        end
-      end
-
-      if options[:except]
-        @@before_actions[:_every] << method
-        if options[:except].is_a? Array
-          options[:except].each do |action|
-            @@before_actions_excepts[action] << method
-          end
-        else
-          @@before_actions_excepts[options[:except]] << method
-        end
-      end
-    end
-  end
 
   def initialize(req, res, route_params = {})
     @req = req
     @res = res
-    @params = HashWithIndifferentAccess.new(route_params.merge(req.params))
-  end
-
-  def already_built_response?
-    @already_built_response
+    @params = HashWithIndifferentAccess.new(route_params.merge(req.params).merge(default_url_options))
   end
 
   def redirect_to(url)
@@ -94,14 +42,6 @@ class ControllerBase
     render_content(template.result(binding), "text/html")
   end
 
-  def render_content(content, content_type)
-    check_for_double_render
-    res["Content-Type"] = content_type
-    res.write(content)
-    session.store_session(res)
-    flash.store_flash(res)
-  end
-
   def session
     @session ||= Session.new(req)
   end
@@ -110,11 +50,16 @@ class ControllerBase
     @flash ||= Flash.new(req)
   end
 
-  def form_authenticity_token
-    token = SecureRandom::urlsafe_base64
-    flash[:csrf_tokens] ||= []
-    flash[:csrf_tokens] << token
-    token
+  def already_built_response?
+    @already_built_response
+  end
+
+  def render_content(content, content_type)
+    check_for_double_render
+    res["Content-Type"] = content_type
+    res.write(content)
+    session.store_session(res)
+    flash.store_flash(res)
   end
 
   def invoke_action(name)
@@ -126,32 +71,11 @@ class ControllerBase
 
   private
     def check_for_double_render
-      raise "Double render/redirect" if already_built_response?
+      raise DoubleRenderError if already_built_response?
       @already_built_response = true
     end
 
-    def run_before_actions(name)
-      run_before_actions_for(name)
-      run_before_actions_for(:_every, name)
-    end
-
-    def check_csrf(name)
-      if @@forgery_protection[:with] == :exception
-        if [:create, :update, :destroy].include?(name) && !valid_csrf_token_present?
-          raise "Invalid authenticity token."
-        end
-      end
-    end
-
-    def run_before_actions_for(actions_for, excepts_for = actions_for)
-      @@before_actions[actions_for].each do |method|
-        unless @@before_actions_excepts[excepts_for].include?(method)
-          send(method)
-        end
-      end
-    end
-
-    def valid_csrf_token_present?
-      flash["csrf_tokens"] && flash["csrf_tokens"].include?(req.params["authenticity_token"])
+    def default_url_options
+      {}
     end
 end
